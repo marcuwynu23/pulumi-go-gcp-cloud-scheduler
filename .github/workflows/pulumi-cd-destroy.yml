@@ -1,0 +1,158 @@
+name: CD - Pulumi GCP Cloud Scheduler (Destroy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: GCP project ID
+        required: true
+        type: string
+      region:
+        description: "GCP region (Free Tier: us-central1, us-east1, us-west1)"
+        required: true
+        type: string
+        default: us-central1
+      job_name:
+        description: Cloud Scheduler job name
+        required: true
+        type: string
+        default: my-scheduler-job
+      job_description:
+        description: Job description
+        required: true
+        type: string
+        default: Triggers a Cloud Run service periodically
+      schedule:
+        description: Cron schedule (e.g. '0 */3 * * *')
+        required: true
+        type: string
+        default: "0 */3 * * *"
+      time_zone:
+        description: Time zone
+        required: true
+        type: string
+        default: UTC
+      attempt_deadline:
+        description: Execution deadline
+        required: true
+        type: string
+        default: 180s
+      http_method:
+        description: HTTP method
+        required: true
+        type: string
+        default: POST
+      target_uri:
+        description: Target HTTP endpoint
+        required: true
+        type: string
+        default: https://your-cloud-run-service-uc.a.run.app
+      body:
+        description: HTTP request body
+        required: true
+        type: string
+        default: '{"schedule": "trigger"}'
+      headers:
+        description: HTTP headers (JSON)
+        required: true
+        type: string
+        default: '{"Content-Type": "application/json"}'
+      oidc_sa_email:
+        description: OIDC service account email
+        required: false
+        type: string
+        default: ""
+      oidc_audience:
+        description: OIDC audience
+        required: false
+        type: string
+        default: ""
+      backend_type:
+        description: State backend (local, gcs, pulumi)
+        required: true
+        type: string
+        default: local
+      gcs_state_bucket:
+        description: GCS bucket for state (if backend_type=gcs)
+        required: false
+        type: string
+        default: ""
+
+env:
+  PULUMI_STACK: cloud-scheduler-${{ github.event.inputs.region }}
+  PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+  GCP_PROJECT: ${{ github.event.inputs.project_id }}
+  GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+jobs:
+  destroy:
+    name: Pulumi Destroy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Install Pulumi CLI
+        uses: pulumi/actions@v5
+        with:
+          command: version
+
+      - name: Configure Pulumi Backend
+        run: |
+          if [ "${{ github.event.inputs.backend_type }}" = "local" ]; then
+            pulumi login --local
+            echo "Using local filesystem backend"
+          elif [ "${{ github.event.inputs.backend_type }}" = "gcs" ]; then
+            if [ -z "${{ github.event.inputs.gcs_state_bucket }}" ]; then
+              echo "ERROR: gcs_state_bucket required for gcs backend"
+              exit 1
+            fi
+            pulumi login gs://${{ github.event.inputs.gcs_state_bucket }}
+            echo "Using GCS backend: gs://${{ github.event.inputs.gcs_state_bucket }}"
+          else
+            if [ -z "${{ secrets.PULUMI_ACCESS_TOKEN }}" ]; then
+              echo "ERROR: PULUMI_ACCESS_TOKEN required for Pulumi Cloud backend"
+              exit 1
+            fi
+            pulumi login --cloud-url https://api.pulumi.com
+            echo "Using Pulumi Cloud backend"
+          fi
+
+      - name: Configure Pulumi Stack
+        run: |
+          pulumi stack select ${{ env.PULUMI_STACK }} 2>/dev/null || echo "Stack not found"
+
+      - name: Set Pulumi Config
+        run: |
+          pulumi config set gcp:project ${{ github.event.inputs.project_id }}
+          pulumi config set gcp:region ${{ github.event.inputs.region }}
+          pulumi config set scheduler:jobName ${{ github.event.inputs.job_name }}
+          pulumi config set scheduler:jobDescription "${{ github.event.inputs.job_description }}"
+          pulumi config set scheduler:schedule "${{ github.event.inputs.schedule }}"
+          pulumi config set scheduler:timeZone ${{ github.event.inputs.time_zone }}
+          pulumi config set scheduler:attemptDeadline ${{ github.event.inputs.attempt_deadline }}
+          pulumi config set scheduler:httpMethod ${{ github.event.inputs.http_method }}
+          pulumi config set scheduler:targetUri ${{ github.event.inputs.target_uri }}
+          pulumi config set scheduler:body '${{ github.event.inputs.body }}'
+          pulumi config set scheduler:headers '${{ github.event.inputs.headers }}'
+          pulumi config set scheduler:oidcSaEmail "${{ github.event.inputs.oidc_sa_email }}"
+          pulumi config set scheduler:oidcAudience "${{ github.event.inputs.oidc_audience }}"
+
+      - name: Download Go Dependencies
+        run: go mod download
+
+      - name: Go Build
+        run: go build -v .
+
+      - name: Pulumi Preview (Destroy)
+        run: |
+          pulumi preview --stack ${{ env.PULUMI_STACK }} --destroy --yes
+
+      - name: Pulumi Destroy
+        run: |
+          pulumi destroy --stack ${{ env.PULUMI_STACK }} --yes
