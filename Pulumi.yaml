@@ -1,0 +1,43 @@
+name: pulumi-go-gcp-cloud-scheduler
+description: A Pulumi Go project for Google Cloud Scheduler
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-go
+  gcp:region:
+    description: 'The GCP region for the Cloud Scheduler job (Free Tier: us-central1, us-east1, us-west1)'
+    value: us-central1
+  scheduler:jobName:
+    description: The name of the Cloud Scheduler job
+    value: my-scheduler-job
+  scheduler:jobDescription:
+    description: The description of the Cloud Scheduler job
+    value: Triggers a Cloud Run service periodically
+  scheduler:schedule:
+    description: The cron schedule for the job (e.g. '0 */3 * * *' for every 3 hours)
+    value: 0 */3 * * *
+  scheduler:timeZone:
+    description: The time zone for the schedule
+    value: UTC
+  scheduler:attemptDeadline:
+    description: The deadline for job execution attempts
+    value: 180s
+  scheduler:httpMethod:
+    description: The HTTP method for the target
+    value: POST
+  scheduler:targetUri:
+    description: The URI of the HTTP target
+    value: https://your-cloud-run-service-uc.a.run.app
+  scheduler:body:
+    description: The body of the HTTP request
+    value: '{"schedule": "trigger"}'
+  scheduler:headers:
+    description: The headers for the HTTP request (JSON map)
+    value: '{"Content-Type": "application/json"}'
+  scheduler:oidcSaEmail:
+    description: The service account email for OIDC authentication
+    value: ''
+  scheduler:oidcAudience:
+    description: The audience for OIDC authentication
+    value: ''

@@ -1,0 +1,14 @@
+config:
+  gcp:project: your-project-id
+  gcp:region: us-central1
+  scheduler:jobName: my-scheduler-job
+  scheduler:jobDescription: Triggers a Cloud Run service periodically
+  scheduler:schedule: "0 */3 * * *"
+  scheduler:timeZone: UTC
+  scheduler:attemptDeadline: 180s
+  scheduler:httpMethod: POST
+  scheduler:targetUri: https://your-cloud-run-service-uc.a.run.app
+  scheduler:body: '{"schedule": "trigger"}'
+  scheduler:headers: '{"Content-Type": "application/json"}'
+  scheduler:oidcSaEmail: ""
+  scheduler:oidcAudience: ""
